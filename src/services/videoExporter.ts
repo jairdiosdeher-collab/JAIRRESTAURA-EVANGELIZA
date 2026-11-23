@@ -707,14 +707,14 @@ export async function exportProjectToMp4(
     });
 
     const ffmpeg = await getFfmpegInstance();
-    const fps = 15;
+    const fps = 10; // Exportación rápida: reduce un tercio los fotogramas sin cambiar la resolución.
     const totalFrames = Math.max(15, Math.round(totalDur * fps));
 
     for (let f = 0; f < totalFrames; f++) {
       const t = (f / totalFrames) * totalDur;
       drawProjectFrame(ctx, width, height, project, t, imageMap, logoImg);
       const blob = await new Promise<Blob | null>((res) =>
-        canvas.toBlob((b) => res(b), 'image/jpeg', 0.9),
+        canvas.toBlob((b) => res(b), 'image/jpeg', 0.78),
       );
       if (blob) {
         const name = `frame_${String(f).padStart(5, '0')}.jpg`;
