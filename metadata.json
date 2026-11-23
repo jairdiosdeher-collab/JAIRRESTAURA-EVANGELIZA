@@ -1,0 +1,6 @@
+{
+  "name": "JAIRRESTAURA EVANGELIZA",
+  "description": "Fábrica inteligente y autónoma de videos evangelísticos cristianos creada por el Pastor y Psicólogo Jair Hernández.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
