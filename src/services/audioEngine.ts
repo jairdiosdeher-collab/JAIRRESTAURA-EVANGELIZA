@@ -227,7 +227,7 @@ export async function renderProjectMixAudioBuffer(options: {
   durationSec: number;
   voiceAudioDataUrl?: string;
 }): Promise<{buffer: AudioBuffer; hasVoice: boolean}> {
-  const sampleRate = 44100;
+  const sampleRate = 22050; // Audio suficiente para voz y música de fondo, con la mitad de muestras.
   const totalSamples = Math.max(sampleRate, Math.round(options.durationSec * sampleRate));
   const offline = new OfflineAudioContext(2, totalSamples, sampleRate);
 
