@@ -66,6 +66,7 @@ import type {
 import {BibleVerseModal} from './BibleVerseModal';
 import type {WizardEntryIntent} from './HomeHub';
 import {VoiceRecorderWidget} from './VoiceRecorderWidget';
+import {listLocalMp4Videos, type LocalMp4Video} from '../services/localMp4Library';
 
 export type WizardMessageCategoryId =
   | 'esperanza'
@@ -525,6 +526,10 @@ export const GuidedVideoWizard: React.FC<GuidedVideoWizardProps> = ({
 
   // Step 4 state (Visual Aspect & Live Preview)
   const [visualTheme, setVisualTheme] = useState<WizardVisualThemeId>('recomendado');
+  const [localMp4Videos, setLocalMp4Videos] = useState<LocalMp4Video[]>([]);
+  const [backgroundVideoId, setBackgroundVideoId] = useState('');
+  const [backgroundVideoBlob, setBackgroundVideoBlob] = useState<Blob | null>(null);
+  const [backgroundVideoUrl, setBackgroundVideoUrl] = useState<string | null>(null);
   const [hasEditedStep2, setHasEditedStep2] = useState(Boolean(initialProject));
   const [projectDraft, setProjectDraft] = useState<VideoProject | null>(initialProject);
 
@@ -550,11 +555,40 @@ export const GuidedVideoWizard: React.FC<GuidedVideoWizardProps> = ({
   const lastSpokenIdxRef = useRef<number>(-1);
   const audioCtrlRef = useRef<LiveAudioController | null>(null);
   const resultVideoRef = useRef<HTMLVideoElement | null>(null);
+  const backgroundVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const activeCategory = useMemo(
     () => MESSAGE_CATEGORIES.find((c) => c.id === selectedCategoryId) ?? MESSAGE_CATEGORIES[0],
     [selectedCategoryId],
   );
+
+  useEffect(() => {
+    let alive = true;
+    void listLocalMp4Videos().then(items => { if (alive) setLocalMp4Videos(items); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    const selected = localMp4Videos.find(item => item.id === backgroundVideoId);
+    setBackgroundVideoBlob(selected?.blob ?? null);
+    if (!selected) { setBackgroundVideoUrl(null); return; }
+    const url = URL.createObjectURL(selected.blob);
+    setBackgroundVideoUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [backgroundVideoId, localMp4Videos]);
+
+  useEffect(() => {
+    const video = backgroundVideoRef.current;
+    if (!video || !backgroundVideoUrl) return;
+    video.pause(); video.currentTime = 0; video.load();
+  }, [backgroundVideoUrl]);
+
+  useEffect(() => {
+    const video = backgroundVideoRef.current;
+    if (!video || !backgroundVideoBlob || !Number.isFinite(video.duration) || video.duration <= 0) return;
+    const target = previewTime % video.duration;
+    if (Math.abs(video.currentTime - target) > 0.35) video.currentTime = target;
+  }, [previewTime, backgroundVideoBlob]);
 
   useEffect(() => {
     audioCtrlRef.current = new LiveAudioController();
@@ -844,6 +878,7 @@ export const GuidedVideoWizard: React.FC<GuidedVideoWizardProps> = ({
       previewTime,
       imageMapRef.current,
       logoImgRef.current,
+      backgroundVideoRef.current,
     );
   }, [step, previewProject, previewTime, previewSize]);
 
@@ -1021,7 +1056,7 @@ export const GuidedVideoWizard: React.FC<GuidedVideoWizardProps> = ({
 
       const res = await exportProjectToMp4(readyProject, (progress) => {
         setExportProgress(progress);
-      });
+      }, backgroundVideoBlob ?? undefined);
 
       setExportResult(res);
       const url = URL.createObjectURL(res.blob);
@@ -1738,6 +1773,22 @@ export const GuidedVideoWizard: React.FC<GuidedVideoWizardProps> = ({
             {/* Right: Live Video Preview */}
             <div className="space-y-4 rounded-2xl border border-stone-200 bg-[#FAF8F4] p-5 lg:col-span-6 dark:border-slate-800 dark:bg-[#090B10]">
               <div className="flex items-center justify-between">
+                <div className="rounded-2xl border border-amber-300/70 bg-amber-50/70 p-4 dark:border-amber-700/50 dark:bg-slate-900/70">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-stone-900 dark:text-stone-100">Mi video MP4 de fondo</p>
+                      <p className="mt-1 text-xs leading-5 text-stone-600 dark:text-slate-400">Elige un video de tu biblioteca local. Se repetirá si es más corto que el mensaje y quedará debajo de los textos y versículos.</p>
+                    </div>
+                    <span className="rounded-full bg-amber-200 px-3 py-1 text-xs font-bold text-amber-950 dark:bg-amber-400/20 dark:text-amber-200">Opcional</span>
+                  </div>
+                  <select value={backgroundVideoId} onChange={e => setBackgroundVideoId(e.target.value)} className="mt-3 min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-slate-950 dark:text-stone-100">
+                    <option value="">Usar imágenes del editor (sin video de fondo)</option>
+                    {localMp4Videos.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                  </select>
+                  {backgroundVideoId && backgroundVideoUrl && <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">Video seleccionado: {localMp4Videos.find(item => item.id === backgroundVideoId)?.name}. El archivo original no se modifica.</p>}
+                  {!localMp4Videos.length && <p className="mt-2 text-xs text-stone-600 dark:text-slate-400">Tu biblioteca está vacía. Primero agrega un MP4 en “Mis Videos MP4”.</p>}
+                  {backgroundVideoUrl && <video ref={backgroundVideoRef} src={backgroundVideoUrl} muted playsInline preload="auto" className="mt-3 aspect-video max-h-36 w-full rounded-lg bg-black object-contain" aria-label="Vista previa del video de fondo" />}
+                </div>
                 <p className="text-base font-bold text-stone-900 dark:text-[#F4F1EA]">
                   Vista previa de tu video
                 </p>
