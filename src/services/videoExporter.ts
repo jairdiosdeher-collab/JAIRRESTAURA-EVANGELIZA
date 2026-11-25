@@ -670,6 +670,18 @@ async function fallbackMediaRecorderExport(
   };
 }
 
+async function seekBackgroundVideo(video: HTMLVideoElement, time: number): Promise<void> {
+  if (!Number.isFinite(video.duration) || video.duration <= 0) return;
+  const target = Math.max(0, Math.min(video.duration - 0.04, time % video.duration));
+  if (Math.abs(video.currentTime - target) < 0.035 && video.readyState >= 2) return;
+  await new Promise<void>((resolve) => {
+    const done = () => { video.removeEventListener('seeked', done); resolve(); };
+    video.addEventListener('seeked', done, {once: true});
+    video.currentTime = target;
+    if (video.seeking === false && video.readyState >= 2) done();
+  });
+}
+
 export async function exportProjectToMp4(
   rawProject: VideoProject,
   onProgress: (p: ExportProgress) => void,
@@ -698,6 +710,7 @@ export async function exportProjectToMp4(
     backgroundVideo.muted = true; backgroundVideo.playsInline = true; backgroundVideo.preload = 'auto';
     backgroundVideo.src = backgroundUrl;
     await new Promise<void>((resolve, reject) => { backgroundVideo!.onloadedmetadata = () => resolve(); backgroundVideo!.onerror = () => reject(new Error('No se pudo leer el video de fondo.')); });
+    await new Promise<void>((resolve) => { if (backgroundVideo!.readyState >= 2) resolve(); else backgroundVideo!.addEventListener('loadeddata', () => resolve(), {once: true}); });
   }
 
   // Respect the currently selected voiceType cleanly
@@ -734,10 +747,7 @@ export async function exportProjectToMp4(
     for (let f = 0; f < totalFrames; f++) {
       const t = (f / totalFrames) * totalDur;
       if (backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0) {
-        const target = t % backgroundVideo.duration;
-        if (Math.abs(backgroundVideo.currentTime - target) > 0.04) {
-          await new Promise<void>((resolve) => { backgroundVideo!.onseeked = () => resolve(); backgroundVideo!.currentTime = target; });
-        }
+        await seekBackgroundVideo(backgroundVideo, t);
       }
       drawProjectFrame(ctx, width, height, project, t, imageMap, logoImg, backgroundVideo);
       const blob = await new Promise<Blob | null>((res) =>
