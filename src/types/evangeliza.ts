@@ -236,4 +236,5 @@ export type AppSection =
   | 'testimonios'
   | 'biblia'
   | 'editor'
-  | 'proyectos';
+  | 'proyectos'
+  | 'videos';
