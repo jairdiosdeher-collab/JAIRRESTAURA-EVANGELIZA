@@ -1,5 +1,5 @@
 import React, {useCallback, useEffect, useState} from 'react';
-import {Download, Film, HardDrive, Trash2, Upload, Video} from 'lucide-react';
+import {Download, Film, HardDrive, Search, Trash2, Upload, Video} from 'lucide-react';
 
 const DB_NAME = 'jairrestaura_mp4_library';
 const STORE_NAME = 'videos';
@@ -11,6 +11,7 @@ interface UploadedVideo {
   size: number;
   addedAt: string;
   blob: Blob;
+  category?: string;
 }
 
 function openLibrary(): Promise<IDBDatabase> {
@@ -49,6 +50,20 @@ async function saveVideo(video: UploadedVideo): Promise<void> {
   });
 }
 
+async function updateVideoCategory(id: string, category: string): Promise<void> {
+  const db = await openLibrary();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const store = tx.objectStore(STORE_NAME);
+    const request = store.get(id);
+    request.onsuccess = () => {
+      if (request.result) store.put({...request.result, category});
+    };
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
 async function removeVideo(id: string): Promise<void> {
   const db = await openLibrary();
   return new Promise((resolve, reject) => {
@@ -64,7 +79,9 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-const UploadedVideoCard: React.FC<{video: UploadedVideo; onDelete: (id: string) => void}> = ({video, onDelete}) => {
+const VIDEO_CATEGORIES = ['Sin categoría', 'Predicaciones', 'Alabanzas', 'Testimonios', 'Familia', 'Invitaciones', 'Saludos pastorales', 'Escenas propias'] as const;
+
+const UploadedVideoCard: React.FC<{video: UploadedVideo; onDelete: (id: string) => void; onCategoryChange: (id: string, category: string) => void}> = ({video, onDelete, onCategoryChange}) => {
   const [url, setUrl] = useState('');
   useEffect(() => {
     const nextUrl = URL.createObjectURL(video.blob);
@@ -79,6 +96,11 @@ const UploadedVideoCard: React.FC<{video: UploadedVideo; onDelete: (id: string) 
       <div className="space-y-3 p-4">
         <h3 className="break-words font-semibold text-stone-900 dark:text-stone-100">{video.name}</h3>
         <p className="text-xs text-stone-500 dark:text-slate-400">{formatSize(video.size)} · Guardado en este dispositivo</p>
+        <label className="block text-xs font-semibold text-stone-700 dark:text-slate-300">Categoría
+          <select value={video.category || 'Sin categoría'} onChange={event => onCategoryChange(video.id, event.target.value)} className="mt-1 min-h-10 w-full rounded-lg border border-stone-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-stone-100">
+            {VIDEO_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}
+          </select>
+        </label>
         <div className="flex flex-wrap gap-2">
           {url && <a href={url} download={video.name} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-[#B47B22] px-3 text-sm font-semibold text-white dark:bg-[#D4A24C] dark:text-[#090B10]"><Download className="h-4 w-4"/> Descargar</a>}
           <button type="button" onClick={() => onDelete(video.id)} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300"><Trash2 className="h-4 w-4"/> Quitar</button>
@@ -94,6 +116,8 @@ export const UploadedVideos: React.FC = () => {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [categoryFilter, setCategoryFilter] = useState('Todas');
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     let active = true;
@@ -131,6 +155,16 @@ export const UploadedVideos: React.FC = () => {
       setBusy(false);
     }
   }, []);
+
+  const handleCategoryChange = async (id: string, category: string) => {
+    try {
+      await updateVideoCategory(id, category);
+      setVideos(current => current.map(video => video.id === id ? {...video, category} : video));
+      setNotice('Categoría actualizada. El archivo original permanece intacto.');
+    } catch {
+      setError('No se pudo actualizar la categoría. Inténtalo de nuevo.');
+    }
+  };
 
   const handleDelete = async (id: string) => {
     if (!window.confirm('¿Quitar este video de la biblioteca de este dispositivo?')) return;
@@ -180,9 +214,18 @@ export const UploadedVideos: React.FC = () => {
         <div className="inline-flex items-center gap-2 text-xs text-stone-500 dark:text-slate-400"><Video className="h-4 w-4"/> MP4 · Biblioteca local</div>
       </div>
       {videos.length ? (
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
-          {videos.map(video => <UploadedVideoCard key={video.id} video={video} onDelete={handleDelete}/>)}
-        </div>
+        <>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label className="relative block"><Search className="absolute left-3 top-3 h-4 w-4 text-stone-400"/><input value={searchText} onChange={event => setSearchText(event.target.value)} placeholder="Buscar por nombre de video…" className="min-h-10 w-full rounded-xl border border-stone-300 bg-white pl-9 pr-3 text-sm dark:border-slate-700 dark:bg-[#11151E] dark:text-stone-100"/></label>
+            <select value={categoryFilter} onChange={event => setCategoryFilter(event.target.value)} aria-label="Filtrar por categoría" className="min-h-10 rounded-xl border border-stone-300 bg-white px-3 text-sm dark:border-slate-700 dark:bg-[#11151E] dark:text-stone-100">
+              {['Todas', ...VIDEO_CATEGORIES].map(category => <option key={category} value={category}>{category === 'Todas' ? 'Todas las categorías' : category}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {videos.filter(video => (categoryFilter === 'Todas' || (video.category || 'Sin categoría') === categoryFilter) && video.name.toLocaleLowerCase().includes(searchText.toLocaleLowerCase())).map(video => <UploadedVideoCard key={video.id} video={video} onDelete={handleDelete} onCategoryChange={handleCategoryChange}/>)}
+          </div>
+          {videos.filter(video => (categoryFilter === 'Todas' || (video.category || 'Sin categoría') === categoryFilter) && video.name.toLocaleLowerCase().includes(searchText.toLocaleLowerCase())).length === 0 && <p className="rounded-xl border border-dashed border-stone-300 p-6 text-center text-sm text-stone-500 dark:border-slate-700 dark:text-slate-400">No hay videos que coincidan con la búsqueda o categoría.</p>}
+        </>
       ) : (
         <div className="rounded-2xl border border-dashed border-stone-300 p-10 text-center dark:border-slate-700">
           <Film className="mx-auto h-10 w-10 text-stone-400"/>
