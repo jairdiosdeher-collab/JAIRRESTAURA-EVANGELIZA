@@ -215,6 +215,7 @@ export function drawProjectFrame(
   elapsedSec: number,
   imageMap: Map<string, HTMLImageElement>,
   logoImg?: HTMLImageElement | null,
+  backgroundVideo?: HTMLVideoElement | null,
 ): void {
   const project = normalizeVideoProject(rawProject);
   const totalDur = getProjectTotalDuration(project);
@@ -259,7 +260,12 @@ export function drawProjectFrame(
     alpha = Math.min(1, t * 1.25);
   }
 
-  if (img && img.complete && img.naturalWidth > 0) {
+  if (backgroundVideo && backgroundVideo.readyState >= 2 && backgroundVideo.videoWidth > 0) {
+    const vw = backgroundVideo.videoWidth, vh = backgroundVideo.videoHeight;
+    const scale = Math.max(width / vw, height / vh);
+    const dw = vw * scale, dh = vh * scale;
+    ctx.drawImage(backgroundVideo, (width - dw) / 2, (height - dh) / 2, dw, dh);
+  } else if (img && img.complete && img.naturalWidth > 0) {
     drawCoverImage(ctx, img, width, height, zoom, panX, panY, alpha);
   } else {
     const grad = ctx.createLinearGradient(0, 0, width, height);
@@ -555,6 +561,7 @@ async function fallbackMediaRecorderExport(
   logoImg: HTMLImageElement | null,
   voiceAudioDataUrl: string | undefined,
   onProgress: (p: ExportProgress) => void,
+  backgroundVideo?: HTMLVideoElement | null,
 ): Promise<ExportResult> {
   const totalDur = getProjectTotalDuration(project);
   const fps = 20;
@@ -616,11 +623,12 @@ async function fallbackMediaRecorderExport(
     const step = () => {
       const elapsed = (performance.now() - startTs) / 1000;
       if (elapsed >= totalDur) {
-        drawProjectFrame(ctx, canvas.width, canvas.height, project, totalDur, imageMap, logoImg);
+        drawProjectFrame(ctx, canvas.width, canvas.height, project, totalDur, imageMap, logoImg, backgroundVideo);
         resolve();
         return;
       }
-      drawProjectFrame(ctx, canvas.width, canvas.height, project, elapsed, imageMap, logoImg);
+      if (backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0) { backgroundVideo.currentTime = elapsed % backgroundVideo.duration; }
+      drawProjectFrame(ctx, canvas.width, canvas.height, project, elapsed, imageMap, logoImg, backgroundVideo);
       onProgress({
         stage: 'encoding',
         percent: Math.min(94, Math.round((elapsed / totalDur) * 85) + 10),
@@ -665,6 +673,7 @@ async function fallbackMediaRecorderExport(
 export async function exportProjectToMp4(
   rawProject: VideoProject,
   onProgress: (p: ExportProgress) => void,
+  backgroundBlob?: Blob,
 ): Promise<ExportResult> {
   const project = normalizeVideoProject(rawProject);
   const totalDur = getProjectTotalDuration(project);
@@ -681,6 +690,15 @@ export async function exportProjectToMp4(
   });
 
   const {imageMap, logoImg} = await preloadProjectImages(project);
+  let backgroundVideo: HTMLVideoElement | null = null;
+  let backgroundUrl: string | null = null;
+  if (backgroundBlob) {
+    backgroundUrl = URL.createObjectURL(backgroundBlob);
+    backgroundVideo = document.createElement('video');
+    backgroundVideo.muted = true; backgroundVideo.playsInline = true; backgroundVideo.preload = 'auto';
+    backgroundVideo.src = backgroundUrl;
+    await new Promise<void>((resolve, reject) => { backgroundVideo!.onloadedmetadata = () => resolve(); backgroundVideo!.onerror = () => reject(new Error('No se pudo leer el video de fondo.')); });
+  }
 
   // Respect the currently selected voiceType cleanly
   let voiceAudioDataUrl =
@@ -715,7 +733,13 @@ export async function exportProjectToMp4(
 
     for (let f = 0; f < totalFrames; f++) {
       const t = (f / totalFrames) * totalDur;
-      drawProjectFrame(ctx, width, height, project, t, imageMap, logoImg);
+      if (backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0) {
+        const target = t % backgroundVideo.duration;
+        if (Math.abs(backgroundVideo.currentTime - target) > 0.04) {
+          await new Promise<void>((resolve) => { backgroundVideo!.onseeked = () => resolve(); backgroundVideo!.currentTime = target; });
+        }
+      }
+      drawProjectFrame(ctx, width, height, project, t, imageMap, logoImg, backgroundVideo);
       const blob = await new Promise<Blob | null>((res) =>
         canvas.toBlob((b) => res(b), 'image/jpeg', 0.78),
       );
@@ -856,6 +880,7 @@ export async function exportProjectToMp4(
       logoImg,
       voiceAudioDataUrl,
       onProgress,
+      backgroundVideo,
     );
     onProgress({
       stage: 'done',
@@ -863,5 +888,7 @@ export async function exportProjectToMp4(
       message: 'Video generado localmente y verificado.',
     });
     return fallbackResult;
+  } finally {
+    if (backgroundUrl) URL.revokeObjectURL(backgroundUrl);
   }
 }
