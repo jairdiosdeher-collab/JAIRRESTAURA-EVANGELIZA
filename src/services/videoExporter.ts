@@ -620,23 +620,24 @@ async function fallbackMediaRecorderExport(
   const startTs = performance.now();
 
   await new Promise<void>((resolve) => {
-    const step = () => {
+    const step = async () => {
       const elapsed = (performance.now() - startTs) / 1000;
       if (elapsed >= totalDur) {
+        if (backgroundVideo) await seekBackgroundVideo(backgroundVideo, totalDur);
         drawProjectFrame(ctx, canvas.width, canvas.height, project, totalDur, imageMap, logoImg, backgroundVideo);
         resolve();
         return;
       }
-      if (backgroundVideo && Number.isFinite(backgroundVideo.duration) && backgroundVideo.duration > 0) { backgroundVideo.currentTime = elapsed % backgroundVideo.duration; }
+      if (backgroundVideo) await seekBackgroundVideo(backgroundVideo, elapsed);
       drawProjectFrame(ctx, canvas.width, canvas.height, project, elapsed, imageMap, logoImg, backgroundVideo);
       onProgress({
         stage: 'encoding',
         percent: Math.min(94, Math.round((elapsed / totalDur) * 85) + 10),
         message: `Finalizando el video (${Math.round(elapsed)}s de ${totalDur}s)...`,
       });
-      requestAnimationFrame(step);
+      requestAnimationFrame(() => { void step(); });
     };
-    requestAnimationFrame(step);
+    requestAnimationFrame(() => { void step(); });
   });
 
   srcNode.stop();
