@@ -584,7 +584,7 @@ export const EVANGELISTIC_CAMPAIGNS: CampaignSeries[] = [
     defaultMusicId: 'piano_emotivo',
     episodes: build7Days([
       {
-        title: 'El altar de oración en casa',
+        title: 'La oración diaria en casa',
         topic: 'Consagrar la familia al Señor',
         bibleRef: 'Josué 24:15',
         bibleText: 'Yo y mi casa serviremos a Jehová.',

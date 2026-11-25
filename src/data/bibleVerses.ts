@@ -55,6 +55,38 @@ export const OFFLINE_BIBLE_VERSES: BibleVerseEntry[] = [
     category: 'Salvación',
     recommendedImageId: 'salvation_grace',
   },
+  {
+    id: 'hechos-4-12',
+    reference: 'Hechos 4:12',
+    text: 'Y en ningún otro hay salvación; porque no hay otro nombre bajo el cielo, dado a los hombres, en que podamos ser salvos.',
+    theme: 'Salvación solo en Cristo',
+    category: 'Salvación',
+    recommendedImageId: 'calvary_cross',
+  },
+  {
+    id: '1-timoteo-2-5',
+    reference: '1 Timoteo 2:5',
+    text: 'Porque hay un solo Dios, y un solo mediador entre Dios y los hombres, Jesucristo hombre.',
+    theme: 'Cristo Único Mediador',
+    category: 'Salvación',
+    recommendedImageId: 'open_bible_light',
+  },
+  {
+    id: 'juan-4-23-24',
+    reference: 'Juan 4:23-24',
+    text: 'Mas la hora viene, y ahora es, cuando los verdaderos adoradores adorarán al Padre en espíritu y en verdad; porque también el Padre tales adoradores busca que le adoren. Dios es Espíritu; y los que le adoran, en espíritu y en verdad es necesario que adoren.',
+    theme: 'Adoración en Espíritu y Verdad',
+    category: 'Enseñanzas',
+    recommendedImageId: 'church_worship',
+  },
+  {
+    id: 'exodo-20-3-5',
+    reference: 'Éxodo 20:3-5',
+    text: 'No tendrás dioses ajenos delante de mí. No te harás imagen, ni ninguna semejanza... No te inclinarás a ellas, ni las honrarás; porque yo soy Jehová tu Dios.',
+    theme: 'Adoración Exclusiva a Dios',
+    category: 'Enseñanzas',
+    recommendedImageId: 'open_bible_light',
+  },
 
   // Evangelios
   {

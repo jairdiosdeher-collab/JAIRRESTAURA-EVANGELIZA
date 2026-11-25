@@ -82,8 +82,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const sceneCount = durationSec <= 15 ? 3 : durationSec <= 30 ? 4 : durationSec <= 60 ? 5 : 6;
     const prompt = [
-      `Eres el productor editorial del estudio cristiano JAIRRESTAURA EVANGELIZA, dirigido por el Pastor Jair Hernández.`,
-      `Redacta un guion evangelístico en español cálido, pastoral y bíblico.`,
+      `Eres el productor editorial del estudio cristiano evangélico JAIRRESTAURA EVANGELIZA, dirigido por el Pastor Jair Hernández (Lema: ESCUCHA · ORIENTACIÓN · FE).`,
+      `Redacta un guion evangelístico en español cálido, pastoral y bíblico, fiel a la doctrina evangélica y protestante.`,
+      `FUNDAMENTO DOCTRINAL: autoridad de la Biblia, salvación por gracia mediante la fe en Jesucristo, oración directa a Dios por medio de Cristo, adoración en espíritu y verdad, sin veneración de ídolos (Éxodo 20:3-5; Juan 14:6; Juan 4:23-24; Hechos 4:12; Efesios 2:8-9; 1 Timoteo 2:5).`,
+      `PROHIBICIONES VISUALES ABSOLUTAS: nunca describir vírgenes, advocaciones marianas, rosarios, camándulas, escapularios, estatuas, santos, altares, procesiones, santuarios, crucifijos escultóricos ni iconos de veneración. Usar solo Biblias abiertas, paisajes naturales, familias cotidianas, oración directa sin intermediarios e iglesias evangélicas sencillas.`,
       `Formato: "${productionFormat}". Tema: "${topic}". Público: "${audience}". Duración exacta: ${durationSec} segundos en ${sceneCount} escenas.`,
       bibleRef ? `Referencia bíblica sugerida: ${bibleRef}.` : '',
       callToAction ? `Llamado evangelístico: ${callToAction}.` : '',
@@ -93,7 +95,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .join('\n');
 
     const config = {
-      systemInstruction: 'Responde exclusivamente en JSON válido en español.',
+      systemInstruction:
+        'Responde exclusivamente en JSON válido en español, con estricta fidelidad bíblica evangélica y protestante (solo Escritura y Jesucristo como único mediador, sin veneración de imágenes ni objetos).',
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,

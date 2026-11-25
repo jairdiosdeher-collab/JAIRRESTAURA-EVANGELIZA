@@ -89,8 +89,11 @@ app.post('/api/gemini/script', async (req, res) => {
     const sceneCount = durationSec <= 15 ? 3 : durationSec <= 30 ? 4 : durationSec <= 60 ? 5 : 6;
 
     const prompt = [
-      `Eres el productor editorial del estudio cristiano JAIRRESTAURA EVANGELIZA, dirigido por el Pastor Jair Hernández.`,
-      `Redacta un guion evangelístico en español cálido, pastoral, bíblico y emocionalmente cercano.`,
+      `Eres el productor editorial del estudio cristiano evangélico JAIRRESTAURA EVANGELIZA, dirigido por el Pastor Jair Hernández (Lema: ESCUCHA · ORIENTACIÓN · FE).`,
+      `Redacta un guion evangelístico en español cálido, pastoral, bíblico y emocionalmente cercano, fiel a la doctrina evangélica y protestante.`,
+      `FUNDAMENTO DOCTRINAL OBLIGATORIO: autoridad exclusiva de las Sagradas Escrituras, salvación por gracia mediante la fe en Jesucristo, oración directa a Dios por medio de Jesucristo (único mediador), adoración en espíritu y en verdad, y rechazo bíblico de la fabricación o veneración de ídolos (Éxodo 20:3-5; Juan 14:6; Juan 4:23-24; Hechos 4:12; Efesios 2:8-9; 1 Timoteo 2:5).`,
+      `PROHIBICIONES VISUALES ABSOLUTAS en visualDirection y en todo el guion: NO sugerir, describir ni mencionar vírgenes o advocaciones marianas, rosarios, camándulas, escapularios, estatuas, esculturas, imágenes de santos, altares, procesiones, santuarios, crucifijos con escultura, ni iconos o estampas de veneración.`,
+      `ELEMENTOS VISUALES PERMITIDOS: Biblias abiertas, paisajes naturales, oración directa a Dios sin objetos de culto, familias cotidianas, caminos, puertas abiertas e iglesias evangélicas sencillas sin imágenes de culto.`,
       `Formato de producción: "${productionFormat}".`,
       `Tema: "${topic}".`,
       `Público objetivo: "${audience}".`,
@@ -105,7 +108,7 @@ app.post('/api/gemini/script', async (req, res) => {
 
     const config = {
       systemInstruction:
-        'Responde exclusivamente en JSON válido en español, con fidelidad bíblica evangélica, tono compasivo y pastoral.',
+        'Responde exclusivamente en JSON válido en español, con estricta fidelidad bíblica evangélica y protestante (solo la Escritura, salvación por gracia en Cristo, sin veneración de imágenes ni devociones ajenas al evangelio), tono compasivo y pastoral.',
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,

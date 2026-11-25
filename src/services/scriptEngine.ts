@@ -509,15 +509,32 @@ export async function generateOnlineGeminiScript(
       };
     }
 
+    const PROHIBITED_DOCTRINAL_VISUAL_RE =
+      /\b(virgen|marian[ao]|rosario|cam[aá]ndula|escapulario|estatua|escultura|santo|santos|altar|altares|procesi[oó]n|santuario|crucifijo|estampa|icono|veneraci[oó]n|purgatorio|inmaculada)\b/i;
+    const SAFE_DOCTRINAL_FALLBACKS: SceneImageId[] = [
+      'open_bible_light',
+      'biblical_landscape',
+      'inspiring_sunrise',
+      'restored_family',
+    ];
+
     const usedImages = new Set<SceneImageId>();
     const scenes: VideoScene[] = raw.scenes.map((s: Record<string, unknown>, idx: number) => {
+      const rawDirection = String(s.visualDirection || 'Toma cinematográfica pastoral');
+      const rawNarration = String(s.narrationText || '');
+      const rawOnScreen = String(s.onScreenText || '');
+      const hasUnsafeVisual = PROHIBITED_DOCTRINAL_VISUAL_RE.test(rawDirection);
+
       const candidateImg = String(s.imageId || '');
-      let imageId: SceneImageId = VALID_IMAGE_IDS.includes(candidateImg as SceneImageId)
-        ? (candidateImg as SceneImageId)
-        : VALID_IMAGE_IDS[idx % VALID_IMAGE_IDS.length];
+      let imageId: SceneImageId = hasUnsafeVisual
+        ? SAFE_DOCTRINAL_FALLBACKS[idx % SAFE_DOCTRINAL_FALLBACKS.length]
+        : VALID_IMAGE_IDS.includes(candidateImg as SceneImageId)
+          ? (candidateImg as SceneImageId)
+          : SAFE_DOCTRINAL_FALLBACKS[idx % SAFE_DOCTRINAL_FALLBACKS.length];
 
       if (usedImages.has(imageId)) {
-        const unused = VALID_IMAGE_IDS.find((id) => !usedImages.has(id));
+        const pool = hasUnsafeVisual ? SAFE_DOCTRINAL_FALLBACKS : VALID_IMAGE_IDS;
+        const unused = pool.find((id) => !usedImages.has(id));
         if (unused) imageId = unused;
       }
       usedImages.add(imageId);
@@ -527,9 +544,11 @@ export async function generateOnlineGeminiScript(
         order: idx + 1,
         durationSec: Math.max(3, Math.min(60, Number(s.durationSec) || 8)),
         imageId,
-        visualDirection: String(s.visualDirection || 'Toma cinematográfica pastoral'),
-        onScreenText: String(s.onScreenText || ''),
-        narrationText: String(s.narrationText || ''),
+        visualDirection: hasUnsafeVisual
+          ? 'Biblia abierta y paisaje natural en luz serena conforme a la doctrina bíblica evangélica.'
+          : rawDirection,
+        onScreenText: rawOnScreen,
+        narrationText: rawNarration,
         bibleRef: s.bibleRef ? String(s.bibleRef) : undefined,
         transition: idx % 2 === 0 ? 'fade' : 'zoom',
       };
