@@ -7,9 +7,11 @@ import {
   Film,
   FolderArchive,
   Heart,
+  Home,
   Library,
   MapPin,
   Moon,
+  PlusCircle,
   Smile,
   Sun,
   Users,
@@ -19,6 +21,8 @@ import {BiblicalLibraryView} from './components/BiblicalLibraryView';
 import {CampaignsHub} from './components/CampaignsHub';
 import {ChurchInvitationsStudio} from './components/ChurchInvitationsStudio';
 import {CreationStudio} from './components/CreationStudio';
+import {GuidedVideoWizard} from './components/GuidedVideoWizard';
+import {HomeHub, type WizardEntryIntent} from './components/HomeHub';
 import {KidsStudio} from './components/KidsStudio';
 import {PWAInstallButton} from './components/PWAInstallBanner';
 import {ProjectsVault} from './components/ProjectsVault';
@@ -28,11 +32,16 @@ import {VideoEditor} from './components/VideoEditor';
 import {YouthStudio} from './components/YouthStudio';
 import {PREPARED_SERMONS} from './data/sermons';
 import {useOnlineStatus} from './hooks/usePWA';
+import {
+  normalizeMinistryIdentity,
+  normalizeVideoProject,
+} from './services/orthography';
 import {createProjectFromSermon, DEFAULT_MINISTRY_IDENTITY} from './services/scriptEngine';
 import {
   deleteProjectById,
   getAllProjects,
   getAppSettings,
+  migrateExistingProjectsOrthography,
   saveAppSettings,
   saveProject,
 } from './services/storageDb';
@@ -40,7 +49,11 @@ import type {AppSection, MinistryIdentity, VideoProject} from './types/evangeliz
 
 export default function App() {
   const isOnline = useOnlineStatus();
-  const [activeSection, setActiveSection] = useState<AppSection>('estudio');
+  const [activeSection, setActiveSection] = useState<AppSection>('inicio');
+  const [wizardIntent, setWizardIntent] = useState<WizardEntryIntent>('biblico');
+  const [wizardInitialProject, setWizardInitialProject] = useState<VideoProject | null>(null);
+  const [wizardSessionKey, setWizardSessionKey] = useState(1);
+
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
   const [ministryIdentity, setMinistryIdentity] = useState<MinistryIdentity>(
     DEFAULT_MINISTRY_IDENTITY,
@@ -51,6 +64,7 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   const loadWorkspaceData = useCallback(async () => {
+    await migrateExistingProjectsOrthography();
     const [storedSettings, storedProjects] = await Promise.all([
       getAppSettings(),
       getAllProjects(),
@@ -64,7 +78,7 @@ export default function App() {
       setProjects(storedProjects);
       setActiveProject((prev) => prev ?? storedProjects[0]);
     } else {
-      // Seed one welcome starter project only when IndexedDB is completely empty
+      // Seed one welcome starter project only when local storage is completely empty
       const starter = createProjectFromSermon(
         PREPARED_SERMONS[0],
         '9:16',
@@ -100,6 +114,17 @@ export default function App() {
     window.scrollTo({top: 0, behavior: 'smooth'});
   };
 
+  const handleStartWizard = (
+    intent: WizardEntryIntent = 'biblico',
+    presetProject: VideoProject | null = null,
+  ) => {
+    setWizardIntent(intent);
+    setWizardInitialProject(presetProject);
+    setWizardSessionKey((k) => k + 1);
+    setActiveSection('asistente');
+    window.scrollTo({top: 0, behavior: 'smooth'});
+  };
+
   const handleToggleTheme = () => {
     const nextTheme = theme === 'dark' ? 'light' : 'dark';
     setTheme(nextTheme);
@@ -111,14 +136,15 @@ export default function App() {
   };
 
   const handleUpdateMinistryIdentity = (nextIdentity: MinistryIdentity) => {
-    setMinistryIdentity(nextIdentity);
+    const normalizedIdentity = normalizeMinistryIdentity(nextIdentity);
+    setMinistryIdentity(normalizedIdentity);
     void saveAppSettings({
       theme,
-      ministryIdentity: nextIdentity,
+      ministryIdentity: normalizedIdentity,
       completedCampaignEpisodes: completedEpisodes,
     });
     if (activeProject) {
-      setActiveProject({...activeProject, ministryIdentity: nextIdentity});
+      setActiveProject({...activeProject, ministryIdentity: normalizedIdentity});
     }
   };
 
@@ -137,10 +163,11 @@ export default function App() {
   };
 
   const handleOpenInEditor = async (proj: VideoProject) => {
-    await saveProject(proj);
+    const normalizedProj = normalizeVideoProject(proj);
+    await saveProject(normalizedProj);
     const refreshed = await getAllProjects();
     setProjects(refreshed);
-    setActiveProject(proj);
+    setActiveProject(refreshed.find((p) => p.id === normalizedProj.id) ?? normalizedProj);
     setActiveSection('editor');
     window.scrollTo({top: 0, behavior: 'smooth'});
   };
@@ -151,20 +178,25 @@ export default function App() {
   };
 
   const handleSaveProject = async (proj: VideoProject) => {
-    await saveProject(proj);
+    const normalizedProj = normalizeVideoProject(proj);
+    await saveProject(normalizedProj);
     const refreshed = await getAllProjects();
     setProjects(refreshed);
+    const saved = refreshed.find((p) => p.id === normalizedProj.id);
+    if (saved) {
+      setActiveProject(saved);
+    }
   };
 
   const handleDuplicateProject = async (proj: VideoProject) => {
     const now = new Date().toISOString();
-    const clone: VideoProject = {
+    const clone: VideoProject = normalizeVideoProject({
       ...proj,
       id: `proj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       title: `${proj.title} (Copia)`,
       createdAt: now,
       updatedAt: now,
-    };
+    });
     await saveProject(clone);
     const refreshed = await getAllProjects();
     setProjects(refreshed);
@@ -179,32 +211,35 @@ export default function App() {
     }
   };
 
-  const navItems: Array<{id: AppSection; label: string; icon: React.ComponentType<{className?: string}>}> = [
-    {id: 'estudio', label: 'Estudio', icon: Clapperboard},
-    {id: 'predicaciones', label: 'Predicaciones', icon: BookOpen},
-    {id: 'campanas', label: 'Series', icon: Calendar},
-    {id: 'editor', label: 'Editor', icon: Film},
-    {id: 'proyectos', label: 'Mis Videos', icon: FolderArchive},
+  const primaryNavLinks: Array<{id: AppSection; label: string}> = [
+    {id: 'inicio', label: 'Inicio'},
+    {id: 'proyectos', label: 'Mis Videos'},
+    {id: 'predicaciones', label: 'Predicaciones'},
+    {id: 'invitaciones', label: 'Invitaciones'},
+    {id: 'biblia', label: 'Biblioteca'},
   ];
 
-  const specializedModules: Array<{
+  const isAdvancedSubModule =
+    activeSection === 'avanzado' ||
+    activeSection === 'estudio' ||
+    activeSection === 'editor' ||
+    activeSection === 'campanas' ||
+    activeSection === 'ninos' ||
+    activeSection === 'jovenes' ||
+    activeSection === 'testimonios';
+
+  const advancedModulesNav: Array<{
     id: AppSection;
     label: string;
     icon: React.ComponentType<{className?: string}>;
   }> = [
+    {id: 'estudio', label: 'Estudio completo', icon: Clapperboard},
+    {id: 'editor', label: 'Editor avanzado', icon: Film},
+    {id: 'campanas', label: 'Series', icon: Calendar},
     {id: 'ninos', label: 'Niños', icon: Smile},
     {id: 'jovenes', label: 'Jóvenes', icon: Users},
-    {id: 'invitaciones', label: 'Invitaciones', icon: MapPin},
     {id: 'testimonios', label: 'Testimonios', icon: Heart},
-    {id: 'biblia', label: 'Biblia', icon: Library},
   ];
-
-  const isSubModule =
-    activeSection === 'ninos' ||
-    activeSection === 'jovenes' ||
-    activeSection === 'invitaciones' ||
-    activeSection === 'testimonios' ||
-    activeSection === 'biblia';
 
   return (
     <div className="min-h-screen bg-[#FAF8F4] text-[#181A1F] transition-colors duration-200 dark:bg-[#090B10] dark:text-[#F4F1EA]">
@@ -214,15 +249,15 @@ export default function App() {
           {/* Zone 1: Single-line Brand Wordmark */}
           <button
             type="button"
-            onClick={() => navigateSection('estudio')}
+            onClick={() => navigateSection('inicio')}
             className="font-display text-xl font-bold tracking-tight text-stone-900 whitespace-nowrap shrink-0 sm:text-2xl dark:text-[#F4F1EA]"
           >
             Jairrestaura Evangeliza
           </button>
 
-          {/* Zone 2: Clean Single-Line Nav Links (Desktop) */}
+          {/* Zone 2: 5 Clean Single-Line Nav Links (Desktop) */}
           <nav className="hidden items-center gap-6 md:flex" aria-label="Navegación principal">
-            {navItems.map((item) => {
+            {primaryNavLinks.map((item) => {
               const active = activeSection === item.id;
               return (
                 <button
@@ -245,18 +280,18 @@ export default function App() {
           <div className="flex items-center gap-2 shrink-0">
             <button
               type="button"
-              onClick={() => navigateSection('estudio')}
-              className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-[#B47B22] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#9A6B1E] whitespace-nowrap shrink-0 dark:bg-[#D4A24C] dark:text-[#090B10] dark:hover:bg-[#EAB354]"
+              onClick={() => handleStartWizard('biblico')}
+              className="inline-flex min-h-[40px] items-center gap-2 rounded-xl bg-[#B47B22] px-4 py-2 text-xs font-bold text-white transition-colors hover:bg-[#9A6B1E] whitespace-nowrap shrink-0 dark:bg-[#D4A24C] dark:text-[#090B10] dark:hover:bg-[#EAB354]"
             >
-              Crear Video
+              Crear mi video
             </button>
           </div>
         </div>
       </header>
 
-      {/* Workspace Utility Bar (Day/Night, PWA Install, Offline Status, Ministry Credit) */}
+      {/* Workspace Utility Bar (Day/Night, PWA Install, Offline Status) */}
       <div className="border-b border-stone-200/70 bg-white/70 dark:border-slate-800/70 dark:bg-[#11151E]/60">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-2 sm:px-6 lg:px-8">
           <p className="text-xs font-medium text-stone-700 dark:text-slate-300">
             Pastor Jair Hernández · Escucha · Orientación · Fe
           </p>
@@ -265,7 +300,7 @@ export default function App() {
             {!isOnline && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                 <WifiOff className="h-3.5 w-3.5" />
-                Modo sin conexión activo · Biblioteca local disponible
+                Sin conexión · Tus videos y mensajes bíblicos siguen disponibles
               </span>
             )}
 
@@ -293,45 +328,45 @@ export default function App() {
         </div>
       </div>
 
-      {/* Specialized Studios Quick Strip (Visible across sub-modules & mobile/desktop) */}
-      <div className="border-b border-stone-200/60 bg-[#FAF8F4] dark:border-slate-800/60 dark:bg-[#090B10]">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-1.5">
-            {isSubModule && (
+      {/* Contextual Back Strip ONLY when user opens an Advanced Tool */}
+      {isAdvancedSubModule && (
+        <div className="border-b border-stone-200/60 bg-[#FAF8F4] dark:border-slate-800/60 dark:bg-[#090B10]">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 overflow-x-auto px-4 py-2 sm:px-6 lg:px-8">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
-                onClick={() => navigateSection('estudio')}
-                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-800 hover:bg-stone-100 whitespace-nowrap shrink-0 dark:border-slate-700 dark:bg-[#11151E] dark:text-stone-200"
+                onClick={() => navigateSection('inicio')}
+                className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-stone-300 bg-white px-3 text-xs font-semibold text-stone-800 hover:bg-stone-100 whitespace-nowrap shrink-0 dark:border-slate-700 dark:bg-[#11151E] dark:text-stone-200"
               >
                 <ArrowLeft className="h-3.5 w-3.5" />
-                Panel principal
+                Volver al inicio
               </button>
-            )}
-            {specializedModules.map((mod) => {
-              const Icon = mod.icon;
-              const active = activeSection === mod.id;
-              return (
-                <button
-                  key={mod.id}
-                  type="button"
-                  onClick={() => navigateSection(mod.id)}
-                  className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
-                    active
-                      ? 'bg-[#B47B22] text-white dark:bg-[#D4A24C] dark:text-[#090B10]'
-                      : 'text-stone-700 hover:bg-stone-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
-                  }`}
-                >
-                  <Icon className="h-3.5 w-3.5" />
-                  {mod.label}
-                </button>
-              );
-            })}
+              {advancedModulesNav.map((mod) => {
+                const Icon = mod.icon;
+                const active = activeSection === mod.id;
+                return (
+                  <button
+                    key={mod.id}
+                    type="button"
+                    onClick={() => navigateSection(mod.id)}
+                    className={`inline-flex min-h-[38px] items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors whitespace-nowrap shrink-0 ${
+                      active
+                        ? 'bg-[#B47B22] text-white dark:bg-[#D4A24C] dark:text-[#090B10]'
+                        : 'text-stone-700 hover:bg-stone-200/70 dark:text-slate-300 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5" />
+                    {mod.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="hidden text-[11px] text-stone-500 sm:inline whitespace-nowrap shrink-0 dark:text-slate-400">
+              Herramientas avanzadas
+            </span>
           </div>
-          <span className="hidden text-[11px] text-stone-500 sm:inline whitespace-nowrap shrink-0 dark:text-slate-400">
-            Módulos especializados Fase 4
-          </span>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area */}
       <main className="mx-auto max-w-7xl px-4 py-8 pb-28 sm:px-6 md:pb-14 lg:px-8">
@@ -341,6 +376,61 @@ export default function App() {
           </div>
         ) : (
           <>
+            {activeSection === 'inicio' && (
+              <HomeHub
+                ministryIdentity={ministryIdentity}
+                savedProjectsCount={projects.length}
+                onStartWizard={(intent) => handleStartWizard(intent)}
+                onNavigateSection={navigateSection}
+              />
+            )}
+
+            {activeSection === 'asistente' && (
+              <GuidedVideoWizard
+                key={wizardSessionKey}
+                ministryIdentity={ministryIdentity}
+                initialIntent={wizardIntent}
+                initialProject={wizardInitialProject}
+                onSaveProject={handleSaveProject}
+                onOpenAdvancedEditor={(proj) => void handleOpenInEditor(proj)}
+                onGoToMyVideos={() => navigateSection('proyectos')}
+                onCancel={() => navigateSection('inicio')}
+              />
+            )}
+
+            {activeSection === 'avanzado' && (
+              <div className="space-y-6">
+                <div className="space-y-1">
+                  <h1 className="font-display text-3xl font-bold text-stone-900 dark:text-[#F4F1EA]">
+                    Herramientas avanzadas
+                  </h1>
+                  <p className="text-sm text-stone-600 dark:text-slate-400">
+                    Módulos especializados para edición detallada, series de varios días, niños, jóvenes y testimonios.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {advancedModulesNav.map((tool) => {
+                    const Icon = tool.icon;
+                    return (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        onClick={() => navigateSection(tool.id)}
+                        className="flex min-h-[92px] items-center gap-4 rounded-2xl border border-stone-200 bg-white p-5 text-left transition-colors hover:border-[#B47B22] dark:border-slate-800 dark:bg-[#11151E] dark:hover:border-[#EAB354]"
+                      >
+                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-stone-100 text-[#B47B22] dark:bg-slate-800 dark:text-[#EAB354]">
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <span className="text-base font-bold text-stone-900 dark:text-[#F4F1EA]">
+                          {tool.label}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {activeSection === 'estudio' && (
               <CreationStudio
                 ministryIdentity={ministryIdentity}
@@ -414,17 +504,17 @@ export default function App() {
             {activeSection === 'editor' && !activeProject && (
               <div className="rounded-2xl border border-stone-200 bg-white p-12 text-center dark:border-slate-800 dark:bg-[#11151E]">
                 <h2 className="font-display text-2xl font-bold text-stone-900 dark:text-[#F4F1EA]">
-                  No hay un proyecto abierto en el editor
+                  No hay un video abierto en el editor
                 </h2>
                 <p className="mt-2 text-sm text-stone-600 dark:text-slate-400">
-                  Crea un video nuevo en el Estudio o selecciona un mensaje preparado.
+                  Crea un video nuevo o elige uno de tus videos guardados.
                 </p>
                 <button
                   type="button"
-                  onClick={() => navigateSection('estudio')}
+                  onClick={() => handleStartWizard('biblico')}
                   className="mt-5 inline-flex min-h-[44px] items-center rounded-xl bg-[#B47B22] px-5 py-2.5 text-sm font-semibold text-white dark:bg-[#D4A24C] dark:text-[#090B10]"
                 >
-                  Ir al Estudio
+                  Crear mi video
                 </button>
               </div>
             )}
@@ -440,7 +530,7 @@ export default function App() {
                 }}
                 onDuplicateProject={(proj) => void handleDuplicateProject(proj)}
                 onDeleteProject={(id) => void handleDeleteProject(id)}
-                onCreateNew={() => navigateSection('estudio')}
+                onCreateNew={() => handleStartWizard('biblico')}
                 onRefreshData={loadWorkspaceData}
               />
             )}
@@ -460,14 +550,20 @@ export default function App() {
         aria-label="Navegación móvil"
         className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 items-center border-t border-stone-200 bg-[#FAF8F4]/95 px-1 pb-safe backdrop-blur-md md:hidden dark:border-slate-800 dark:bg-[#090B10]/95"
       >
-        {navItems.map((item) => {
+        {[
+          {id: 'inicio' as AppSection, label: 'Inicio', icon: Home, onClick: () => navigateSection('inicio')},
+          {id: 'asistente' as AppSection, label: 'Crear', icon: PlusCircle, onClick: () => handleStartWizard('biblico')},
+          {id: 'proyectos' as AppSection, label: 'Mis Videos', icon: FolderArchive, onClick: () => navigateSection('proyectos')},
+          {id: 'predicaciones' as AppSection, label: 'Mensajes', icon: BookOpen, onClick: () => navigateSection('predicaciones')},
+          {id: 'avanzado' as AppSection, label: 'Más', icon: Library, onClick: () => navigateSection('avanzado')},
+        ].map((item) => {
           const Icon = item.icon;
           const active = activeSection === item.id;
           return (
             <button
               key={item.id}
               type="button"
-              onClick={() => navigateSection(item.id)}
+              onClick={item.onClick}
               className={`flex min-h-[44px] flex-col items-center justify-center rounded-lg px-1 py-1 transition-colors ${
                 active
                   ? 'text-[#9A6B1E] dark:text-[#EAB354]'

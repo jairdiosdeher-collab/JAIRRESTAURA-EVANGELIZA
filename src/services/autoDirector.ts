@@ -11,6 +11,7 @@ import type {
   VideoScene,
 } from '../types/evangeliza';
 import {synthesizeServerSpanishVoice} from './audioEngine';
+import {normalizeEvangelisticScript, normalizeVideoProject} from './orthography';
 import {
   createProjectFromInput,
   generateLocalEvangelisticScript,
@@ -192,11 +193,11 @@ export function directScriptSequence(
   const recommendedMusic = selectRecommendedMusic(options.topic, format);
 
   return {
-    script: {
+    script: normalizeEvangelisticScript({
       ...script,
       scenes: directedScenes,
       fullNarration: directedScenes.map((s) => s.narrationText).join(' '),
-    },
+    }),
     recommendedMusic,
   };
 }
@@ -209,11 +210,11 @@ export function reDirectExistingProject(project: VideoProject): VideoProject {
     preserveCustomImages: true,
   });
 
-  return {
+  return normalizeVideoProject({
     ...project,
     musicTrackId: project.musicTrackId === 'sin_musica' ? 'sin_musica' : recommendedMusic,
     script,
-  };
+  });
 }
 
 export async function produceOneClickEvangelisticVideo(

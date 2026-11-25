@@ -224,6 +224,9 @@ export interface BibleVerseEntry {
 }
 
 export type AppSection =
+  | 'inicio'
+  | 'asistente'
+  | 'avanzado'
   | 'estudio'
   | 'predicaciones'
   | 'campanas'

@@ -1,5 +1,11 @@
 import {OFFLINE_BIBLE_VERSES} from '../data/bibleVerses';
 import {SCENE_CATALOG} from '../data/sceneCatalog';
+import {
+  normalizeChristianCapitalization,
+  normalizeEvangelisticScript,
+  normalizeMinistryIdentity,
+  normalizeVideoProject,
+} from './orthography';
 import type {
   AspectRatio,
   CampaignEpisode,
@@ -323,9 +329,23 @@ function audienceTonePhrase(audience: TargetAudience): string {
   }
 }
 
+function formatInlineTopicClause(rawTopic: string): string {
+  const normalized = normalizeChristianCapitalization(rawTopic.trim());
+  if (!normalized) return 'el amor de Dios';
+  const keepLeadingUpper =
+    /^(?:Dios|Jesús|Jesucristo|Cristo|Biblia|Espíritu|Día\s+\d+|David|Moisés|Abraham|Elías|Salmos?|Mateo|Marcos|Lucas|Juan|Hechos|Romanos|Corintios|Efesios|Filipenses|Jeremías|Isaías|Apocalipsis|MMM)\b/u;
+  if (keepLeadingUpper.test(normalized)) {
+    return normalized;
+  }
+  return normalized.charAt(0).toLowerCase() + normalized.slice(1);
+}
+
 export function generateLocalEvangelisticScript(input: StudioGenerationInput): EvangelisticScript {
   const format = input.productionFormat ?? 'evangelistico_30_60';
-  const cleanTopic = input.topic.trim() || 'Jesús te ama y tiene esperanza para ti';
+  const cleanTopic = normalizeChristianCapitalization(
+    input.topic.trim() || 'Jesús te ama y tiene esperanza para ti',
+  );
+  const inlineTopic = formatInlineTopicClause(cleanTopic);
   const verse = pickBestVerse(cleanTopic, format, input.customBibleRef, input.customBibleText);
   const formatPreset = PRODUCTION_FORMATS.find((f) => f.id === format);
 
@@ -345,29 +365,30 @@ export function generateLocalEvangelisticScript(input: StudioGenerationInput): E
   const durations = distributeDurations(input.duration, sceneCount);
   const distinctImages = pickDistinctImages(preferredPool, sceneCount);
 
-  const callToAction =
+  const callToAction = normalizeChristianCapitalization(
     input.customCallToAction?.trim() ||
-    (format === 'invitacion_culto'
-      ? 'Te esperamos con los brazos abiertos en nuestra iglesia. Ven con tu familia y vive un encuentro con Dios.'
-      : format === 'infantil'
-        ? 'Habla hoy con Jesús en una oración sencilla. Él siempre escucha a los niños con alegría.'
-        : format === 'matrimonios'
-          ? 'Tomen hoy sus manos, pidan perdón si hace falta y entreguen su matrimonio a Jesucristo.'
-          : 'Hoy abre tu corazón a Jesucristo. Ora con fe, recíbelo como tu Salvador y permite que su paz restaure tu vida.');
+      (format === 'invitacion_culto'
+        ? 'Te esperamos con los brazos abiertos en nuestra iglesia. Ven con tu familia y vive un encuentro con Dios.'
+        : format === 'infantil'
+          ? 'Habla hoy con Jesús en una oración sencilla. Él siempre escucha a los niños con alegría.'
+          : format === 'matrimonios'
+            ? 'Tomen hoy sus manos, pidan perdón si hace falta y entreguen su matrimonio a Jesucristo.'
+            : 'Hoy abre tu corazón a Jesucristo. Ora con fe, recíbelo como tu Salvador y permite que su paz restaure tu vida.'),
+  );
 
   const hookByFormat: Record<ProductionFormat, string> = {
-    microvideo_15s: `Detente un momento: Dios tiene una palabra urgente sobre ${cleanTopic.toLowerCase()}.`,
-    evangelistico_30_60: `¿Alguna vez sentiste que nadie comprende lo que cargas? Escucha esto sobre ${cleanTopic.toLowerCase()}.`,
-    predicacion_3min: `Hoy meditaremos juntos a la luz de la Biblia sobre ${cleanTopic.toLowerCase()}.`,
+    microvideo_15s: `Detente un momento: Dios tiene una palabra urgente sobre ${inlineTopic}.`,
+    evangelistico_30_60: `¿Alguna vez sentiste que nadie comprende lo que cargas? Escucha esto sobre ${inlineTopic}.`,
+    predicacion_3min: `Hoy meditaremos juntos a la luz de la Biblia sobre ${inlineTopic}.`,
     testimonio: `Lo que parecía un final sin salida se convirtió en el comienzo de una vida nueva en Cristo.`,
     invitacion_culto: `Este fin de semana hay un lugar especial preparado para ti y toda tu familia.`,
-    infantil: `¡Hola! Hoy vamos a descubrir una historia maravillosa de la Biblia sobre ${cleanTopic.toLowerCase()}.`,
+    infantil: `¡Hola! Hoy vamos a descubrir una historia maravillosa de la Biblia sobre ${inlineTopic}.`,
     adolescentes: `¿Te has sentido presionado por encajar o ansioso por el futuro? Escucha esto hoy.`,
     matrimonios: `Ningún hogar es perfecto, pero todo matrimonio puede renovarse cuando invita a Cristo al centro.`,
-    campana_evangelistica: `Un mensaje diario de fe y esperanza para tu corazón sobre ${cleanTopic.toLowerCase()}.`,
+    campana_evangelistica: `Un mensaje diario de fe y esperanza para tu corazón sobre ${inlineTopic}.`,
   };
 
-  const hook3s = hookByFormat[format];
+  const hook3s = normalizeChristianCapitalization(hookByFormat[format]);
   const audienceLead = audienceTonePhrase(input.audience);
 
   const rawBlueprints: Array<Omit<VideoScene, 'id' | 'order' | 'durationSec' | 'imageId'>> = [
@@ -431,7 +452,7 @@ export function generateLocalEvangelisticScript(input: StudioGenerationInput): E
     imageId: distinctImages[idx],
   }));
 
-  return {
+  return normalizeEvangelisticScript({
     title: cleanTopic,
     hook3s,
     fullNarration: scenes.map((s) => s.narrationText).join(' '),
@@ -439,7 +460,7 @@ export function generateLocalEvangelisticScript(input: StudioGenerationInput): E
     bibleVerseText: verse.text,
     callToAction,
     scenes,
-  };
+  });
 }
 
 export async function generateOnlineGeminiScript(
@@ -515,7 +536,7 @@ export async function generateOnlineGeminiScript(
     });
 
     return {
-      script: {
+      script: normalizeEvangelisticScript({
         title: String(raw.title || input.topic),
         hook3s: String(raw.hook3s || scenes[0]?.narrationText || ''),
         fullNarration: String(
@@ -525,7 +546,7 @@ export async function generateOnlineGeminiScript(
         bibleVerseText: String(raw.bibleVerseText || input.customBibleText || ''),
         callToAction: String(raw.callToAction || 'Busca hoy a Jesucristo en oración.'),
         scenes,
-      },
+      }),
       usedOnline: true,
     };
   } catch {
@@ -543,10 +564,11 @@ export function createProjectFromInput(
   extras?: {sourceSermonId?: string; campaignId?: string; campaignDay?: number},
 ): VideoProject {
   const now = new Date().toISOString();
-  return {
+  const normalizedScript = normalizeEvangelisticScript(script);
+  return normalizeVideoProject({
     id: createId('proj'),
-    title: script.title,
-    topic: input.topic,
+    title: normalizedScript.title,
+    topic: normalizeChristianCapitalization(input.topic),
     productionFormat: input.productionFormat ?? 'evangelistico_30_60',
     audience: input.audience,
     targetDuration: input.duration,
@@ -558,12 +580,14 @@ export function createProjectFromInput(
     narrationVolume: 94,
     showSubtitles: true,
     showLogo: true,
-    ministryIdentity: input.ministryIdentity ?? {...DEFAULT_MINISTRY_IDENTITY},
-    script,
+    ministryIdentity: normalizeMinistryIdentity(
+      input.ministryIdentity ?? {...DEFAULT_MINISTRY_IDENTITY},
+    ),
+    script: normalizedScript,
     createdAt: now,
     updatedAt: now,
     ...extras,
-  };
+  });
 }
 
 export function createProjectFromSermon(

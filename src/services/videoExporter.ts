@@ -7,6 +7,7 @@ import {
   renderProjectMixWav,
   synthesizeServerSpanishVoice,
 } from './audioEngine';
+import {normalizeVideoProject} from './orthography';
 
 export interface ExportProgress {
   stage: 'preparing' | 'voice' | 'frames' | 'audio' | 'encoding' | 'verifying' | 'done';
@@ -210,11 +211,12 @@ export function drawProjectFrame(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
-  project: VideoProject,
+  rawProject: VideoProject,
   elapsedSec: number,
   imageMap: Map<string, HTMLImageElement>,
   logoImg?: HTMLImageElement | null,
 ): void {
+  const project = normalizeVideoProject(rawProject);
   const totalDur = getProjectTotalDuration(project);
   const clampedTime = Math.max(0, Math.min(totalDur, elapsedSec));
   const {scene, prevScene, index, localTime, progress} = getSceneAtTime(
@@ -622,7 +624,7 @@ async function fallbackMediaRecorderExport(
       onProgress({
         stage: 'encoding',
         percent: Math.min(94, Math.round((elapsed / totalDur) * 85) + 10),
-        message: `Grabando video + audio local (${Math.round(elapsed)}s / ${totalDur}s)...`,
+        message: `Finalizando el video (${Math.round(elapsed)}s de ${totalDur}s)...`,
       });
       requestAnimationFrame(step);
     };
@@ -646,8 +648,8 @@ async function fallbackMediaRecorderExport(
     containerFormat: isMp4 ? 'mp4' : 'webm',
     isWebmFallback: !isMp4,
     codecSummary: isMp4
-      ? 'MP4 nativo del navegador'
-      : 'WEBM (VP8 / Opus — respaldo del navegador)',
+      ? 'Video MP4 compatible'
+      : 'Video compatible (WEBM)',
     engine: 'mediarecorder-fallback',
     verified: meta.playable && blob.size > 1000,
     hasVideoTrack: meta.width > 0 && meta.height > 0,
@@ -661,9 +663,10 @@ async function fallbackMediaRecorderExport(
 }
 
 export async function exportProjectToMp4(
-  project: VideoProject,
+  rawProject: VideoProject,
   onProgress: (p: ExportProgress) => void,
 ): Promise<ExportResult> {
+  const project = normalizeVideoProject(rawProject);
   const totalDur = getProjectTotalDuration(project);
   const {width, height} = getDimensionsForAspectRatio(project.aspectRatio, 'export');
   const canvas = document.createElement('canvas');
@@ -703,7 +706,7 @@ export async function exportProjectToMp4(
     onProgress({
       stage: 'preparing',
       percent: 12,
-      message: 'Inicializando motor FFmpeg.wasm local...',
+      message: 'Preparando tu mensaje...',
     });
 
     const ffmpeg = await getFfmpegInstance();
@@ -725,7 +728,7 @@ export async function exportProjectToMp4(
         onProgress({
           stage: 'frames',
           percent: pct,
-          message: `Renderizando fotogramas (${f + 1}/${totalFrames})...`,
+          message: `Organizando las escenas (${f + 1} de ${totalFrames})...`,
         });
       }
     }
@@ -734,8 +737,8 @@ export async function exportProjectToMp4(
       stage: 'audio',
       percent: 62,
       message: voiceAudioDataUrl
-        ? 'Mezclando voz narrada y música instrumental...'
-        : 'Sintetizando pista musical instrumental...',
+        ? 'Añadiendo tu narración y música...'
+        : 'Añadiendo música de fondo...',
     });
 
     const {wavBytes, hasVoice} = await renderProjectMixWav({
@@ -750,7 +753,7 @@ export async function exportProjectToMp4(
     onProgress({
       stage: 'encoding',
       percent: 70,
-      message: 'Codificando video MP4 (H.264 + AAC)...',
+      message: 'Finalizando el video...',
     });
 
     ffmpeg.on('progress', ({progress}) => {
@@ -759,7 +762,7 @@ export async function exportProjectToMp4(
         onProgress({
           stage: 'encoding',
           percent: pct,
-          message: 'Empaquetando video MP4 con imagen, subtítulos y audio...',
+          message: 'Finalizando el video...',
         });
       }
     });
@@ -828,7 +831,7 @@ export async function exportProjectToMp4(
       mimeType: 'video/mp4',
       containerFormat: 'mp4',
       isWebmFallback: false,
-      codecSummary: 'MP4 (H.264 / AAC · FastStart)',
+      codecSummary: 'Video MP4 compatible (alta calidad)',
       engine: 'ffmpeg-wasm',
       verified: isIsoMp4 && meta.playable,
       hasVideoTrack: meta.width > 0 && meta.height > 0,
@@ -844,7 +847,7 @@ export async function exportProjectToMp4(
     onProgress({
       stage: 'encoding',
       percent: 20,
-      message: 'Usando grabador local con audio integrado...',
+      message: 'Finalizando el video en tu navegador...',
     });
     const fallbackResult = await fallbackMediaRecorderExport(
       project,

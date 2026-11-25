@@ -43,6 +43,10 @@ import {
   CAMERA_MOTION_LABELS,
   reDirectExistingProject,
 } from '../services/autoDirector';
+import {
+  normalizeChristianCapitalization,
+  normalizeVideoProject,
+} from '../services/orthography';
 import {downloadProjectJson} from '../services/storageDb';
 import {
   drawProjectFrame,
@@ -362,8 +366,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
   };
 
   const handleSave = async () => {
-    await onSaveProject(project);
-    setSaveFeedback('Guardado localmente en IndexedDB');
+    const normalized = normalizeVideoProject(project);
+    onUpdateProject(normalized);
+    await onSaveProject(normalized);
+    setSaveFeedback('Video guardado en Mis Videos');
     setTimeout(() => setSaveFeedback(null), 3000);
   };
 
@@ -380,8 +386,10 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
 
     setIsExporting(true);
     try {
-      await onSaveProject(project);
-      const res = await exportProjectToMp4(project, (progress) => {
+      const normalized = normalizeVideoProject(project);
+      onUpdateProject(normalized);
+      await onSaveProject(normalized);
+      const res = await exportProjectToMp4(normalized, (progress) => {
         setExportProgress(progress);
       });
       setExportResult(res);
@@ -489,6 +497,16 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                 script: {...project.script, title: e.target.value},
               })
             }
+            onBlur={() => {
+              const fixedTitle = normalizeChristianCapitalization(project.title);
+              if (fixedTitle !== project.title) {
+                onUpdateProject({
+                  ...project,
+                  title: fixedTitle,
+                  script: {...project.script, title: fixedTitle},
+                });
+              }
+            }}
             aria-label="Título del proyecto de video"
             className="mt-1 w-full bg-transparent font-display text-2xl font-bold text-stone-900 focus:outline-none sm:text-3xl dark:text-[#F4F1EA]"
           />
@@ -649,7 +667,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                           Aviso de formato: se generó un archivo .WEBM en lugar de .MP4
                         </p>
                         <p className="mt-0.5 leading-relaxed">
-                          El motor FFmpeg.wasm para MP4 no estuvo disponible en este navegador, por lo que se utilizó grabación local compatible en formato WEBM.
+                          Tu navegador preparó un archivo compatible (.WEBM) porque el formato MP4 no estuvo disponible aquí. Puedes reproducirlo y compartirlo normalmente.
                         </p>
                       </div>
                     </div>
@@ -1030,6 +1048,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         onChange={(e) =>
                           updateSingleScene(safeSceneIdx, {onScreenText: e.target.value})
                         }
+                        onBlur={() =>
+                          updateSingleScene(safeSceneIdx, {
+                            onScreenText: normalizeChristianCapitalization(
+                              editingScene.onScreenText,
+                            ),
+                          })
+                        }
                         className="mt-1 w-full rounded-xl border border-stone-300 bg-[#FAF8F4] p-3 text-sm text-stone-900 focus:border-[#B47B22] focus:outline-none dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                       />
                     </div>
@@ -1047,6 +1072,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         value={editingScene.narrationText}
                         onChange={(e) =>
                           updateSingleScene(safeSceneIdx, {narrationText: e.target.value})
+                        }
+                        onBlur={() =>
+                          updateSingleScene(safeSceneIdx, {
+                            narrationText: normalizeChristianCapitalization(
+                              editingScene.narrationText,
+                            ),
+                          })
                         }
                         className="mt-1 w-full rounded-xl border border-stone-300 bg-[#FAF8F4] p-3 text-sm text-stone-900 focus:border-[#B47B22] focus:outline-none dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                       />
@@ -1066,6 +1098,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         onChange={(e) =>
                           updateSingleScene(safeSceneIdx, {visualDirection: e.target.value})
                         }
+                        onBlur={() =>
+                          updateSingleScene(safeSceneIdx, {
+                            visualDirection: normalizeChristianCapitalization(
+                              editingScene.visualDirection,
+                            ),
+                          })
+                        }
                         className="mt-1 w-full min-h-[40px] rounded-xl border border-stone-300 bg-[#FAF8F4] px-3 text-sm text-stone-900 focus:border-[#B47B22] focus:outline-none dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                       />
                     </div>
@@ -1083,6 +1122,13 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         value={editingScene.bibleRef || ''}
                         onChange={(e) =>
                           updateSingleScene(safeSceneIdx, {bibleRef: e.target.value || undefined})
+                        }
+                        onBlur={() =>
+                          updateSingleScene(safeSceneIdx, {
+                            bibleRef: editingScene.bibleRef
+                              ? normalizeChristianCapitalization(editingScene.bibleRef)
+                              : undefined,
+                          })
                         }
                         placeholder="Ej. Juan 3:16"
                         className="mt-1 w-full min-h-[40px] rounded-xl border border-stone-300 bg-[#FAF8F4] px-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
@@ -1125,6 +1171,15 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         script: {...project.script, hook3s: e.target.value},
                       })
                     }
+                    onBlur={() =>
+                      onUpdateProject({
+                        ...project,
+                        script: {
+                          ...project.script,
+                          hook3s: normalizeChristianCapitalization(project.script.hook3s),
+                        },
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-[#FAF8F4] p-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                   />
                 </div>
@@ -1143,6 +1198,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                           script: {...project.script, bibleReference: e.target.value},
                         })
                       }
+                      onBlur={() =>
+                        onUpdateProject({
+                          ...project,
+                          script: {
+                            ...project.script,
+                            bibleReference: normalizeChristianCapitalization(
+                              project.script.bibleReference,
+                            ),
+                          },
+                        })
+                      }
                       className="mt-1 w-full min-h-[42px] rounded-xl border border-stone-300 bg-[#FAF8F4] px-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                     />
                   </div>
@@ -1157,6 +1223,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         onUpdateProject({
                           ...project,
                           script: {...project.script, bibleVerseText: e.target.value},
+                        })
+                      }
+                      onBlur={() =>
+                        onUpdateProject({
+                          ...project,
+                          script: {
+                            ...project.script,
+                            bibleVerseText: normalizeChristianCapitalization(
+                              project.script.bibleVerseText,
+                            ),
+                          },
                         })
                       }
                       className="mt-1 w-full min-h-[42px] rounded-xl border border-stone-300 bg-[#FAF8F4] px-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
@@ -1177,6 +1254,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                         script: {...project.script, callToAction: e.target.value},
                       })
                     }
+                    onBlur={() =>
+                      onUpdateProject({
+                        ...project,
+                        script: {
+                          ...project.script,
+                          callToAction: normalizeChristianCapitalization(
+                            project.script.callToAction,
+                          ),
+                        },
+                      })
+                    }
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-[#FAF8F4] p-3 text-sm text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"
                   />
                 </div>
@@ -1192,6 +1280,17 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({
                       onUpdateProject({
                         ...project,
                         script: {...project.script, fullNarration: e.target.value},
+                      })
+                    }
+                    onBlur={() =>
+                      onUpdateProject({
+                        ...project,
+                        script: {
+                          ...project.script,
+                          fullNarration: normalizeChristianCapitalization(
+                            project.script.fullNarration,
+                          ),
+                        },
                       })
                     }
                     className="mt-1 w-full rounded-xl border border-stone-300 bg-[#FAF8F4] p-3 text-sm leading-relaxed text-stone-900 dark:border-slate-700 dark:bg-[#090B10] dark:text-stone-100"

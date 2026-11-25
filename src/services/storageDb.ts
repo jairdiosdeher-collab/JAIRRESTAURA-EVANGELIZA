@@ -1,10 +1,12 @@
 import type {MinistryIdentity, VideoProject} from '../types/evangeliza';
+import {normalizeMinistryIdentity, normalizeVideoProject} from './orthography';
 import {DEFAULT_MINISTRY_IDENTITY} from './scriptEngine';
 
 const DB_NAME = 'jairrestaura_evangeliza_db';
 const DB_VERSION = 1;
 const STORE_PROJECTS = 'projects';
 const STORE_SETTINGS = 'settings';
+const ORTHOGRAPHY_BACKUP_KEY = 'pre_orthography_backup_v1';
 
 export interface AppStoredSettings {
   theme: 'dark' | 'light';
@@ -35,6 +37,111 @@ function openDatabase(): Promise<IDBDatabase> {
   });
 }
 
+export interface OrthographyMigrationResult {
+  totalProjects: number;
+  migratedProjects: number;
+  backupCreated: boolean;
+}
+
+/**
+ * Migración segura e idempotente de proyectos existentes en IndexedDB.
+ * - Conserva DB_VERSION = 1 sin reiniciar ni borrar registros.
+ * - Guarda copia de seguridad previa antes de modificar registros (solo si aún no existe).
+ * - Conserva IDs, createdAt, updatedAt, duplicados, audios, imágenes y demás propiedades.
+ */
+export async function migrateExistingProjectsOrthography(): Promise<OrthographyMigrationResult> {
+  try {
+    const db = await openDatabase();
+    return await new Promise<OrthographyMigrationResult>((resolve, reject) => {
+      const tx = db.transaction([STORE_PROJECTS, STORE_SETTINGS], 'readwrite');
+      const projectsStore = tx.objectStore(STORE_PROJECTS);
+      const settingsStore = tx.objectStore(STORE_SETTINGS);
+
+      const getProjectsReq = projectsStore.getAll();
+      const getSettingsReq = settingsStore.get('app_settings');
+      const getBackupReq = settingsStore.get(ORTHOGRAPHY_BACKUP_KEY);
+
+      let existingProjects: VideoProject[] | null = null;
+      let settingsRecord: {key: string; value: AppStoredSettings} | undefined;
+      let hasBackup = false;
+      let settledCount = 0;
+
+      let migratedProjects = 0;
+      let backupCreated = false;
+
+      const tryApplyMigration = () => {
+        if (settledCount < 3 || existingProjects === null) return;
+
+        const changedProjects: VideoProject[] = [];
+        for (const proj of existingProjects) {
+          const normalized = normalizeVideoProject(proj);
+          if (JSON.stringify(proj) !== JSON.stringify(normalized)) {
+            changedProjects.push(normalized);
+          }
+        }
+
+        const currentSettings = settingsRecord?.value
+          ? {...DEFAULT_SETTINGS, ...settingsRecord.value}
+          : DEFAULT_SETTINGS;
+        const normalizedSettings: AppStoredSettings = {
+          ...currentSettings,
+          ministryIdentity: normalizeMinistryIdentity(currentSettings.ministryIdentity),
+        };
+        const settingsChanged =
+          Boolean(settingsRecord?.value) &&
+          JSON.stringify(currentSettings) !== JSON.stringify(normalizedSettings);
+
+        if (!hasBackup && (changedProjects.length > 0 || settingsChanged || existingProjects.length > 0)) {
+          settingsStore.put({
+            key: ORTHOGRAPHY_BACKUP_KEY,
+            value: {
+              createdAt: new Date().toISOString(),
+              projects: existingProjects,
+              settings: currentSettings,
+            },
+          });
+          backupCreated = true;
+        }
+
+        for (const updatedProj of changedProjects) {
+          projectsStore.put(updatedProj);
+          migratedProjects++;
+        }
+
+        if (settingsChanged) {
+          settingsStore.put({key: 'app_settings', value: normalizedSettings});
+        }
+      };
+
+      getProjectsReq.onsuccess = () => {
+        existingProjects = (getProjectsReq.result as VideoProject[]) || [];
+        settledCount++;
+        tryApplyMigration();
+      };
+      getSettingsReq.onsuccess = () => {
+        settingsRecord = getSettingsReq.result as {key: string; value: AppStoredSettings} | undefined;
+        settledCount++;
+        tryApplyMigration();
+      };
+      getBackupReq.onsuccess = () => {
+        hasBackup = Boolean(getBackupReq.result);
+        settledCount++;
+        tryApplyMigration();
+      };
+
+      tx.oncomplete = () =>
+        resolve({
+          totalProjects: existingProjects?.length ?? 0,
+          migratedProjects,
+          backupCreated,
+        });
+      tx.onerror = () => reject(tx.error);
+    });
+  } catch {
+    return {totalProjects: 0, migratedProjects: 0, backupCreated: false};
+  }
+}
+
 export async function getAllProjects(): Promise<VideoProject[]> {
   try {
     const db = await openDatabase();
@@ -43,7 +150,7 @@ export async function getAllProjects(): Promise<VideoProject[]> {
       const store = tx.objectStore(STORE_PROJECTS);
       const req = store.getAll();
       req.onsuccess = () => {
-        const list = (req.result as VideoProject[]) || [];
+        const list = ((req.result as VideoProject[]) || []).map(normalizeVideoProject);
         list.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
         resolve(list);
       };
@@ -56,8 +163,9 @@ export async function getAllProjects(): Promise<VideoProject[]> {
 
 export async function saveProject(project: VideoProject): Promise<void> {
   const db = await openDatabase();
+  const normalized = normalizeVideoProject(project);
   const updated: VideoProject = {
-    ...project,
+    ...normalized,
     updatedAt: new Date().toISOString(),
   };
   await new Promise<void>((resolve, reject) => {
@@ -89,7 +197,11 @@ export async function getAppSettings(): Promise<AppStoredSettings> {
       const req = store.get('app_settings');
       req.onsuccess = () => {
         const record = req.result as {key: string; value: AppStoredSettings} | undefined;
-        resolve(record?.value ? {...DEFAULT_SETTINGS, ...record.value} : DEFAULT_SETTINGS);
+        const merged = record?.value ? {...DEFAULT_SETTINGS, ...record.value} : DEFAULT_SETTINGS;
+        resolve({
+          ...merged,
+          ministryIdentity: normalizeMinistryIdentity(merged.ministryIdentity),
+        });
       };
       req.onerror = () => reject(req.error);
     });
@@ -100,10 +212,14 @@ export async function getAppSettings(): Promise<AppStoredSettings> {
 
 export async function saveAppSettings(settings: AppStoredSettings): Promise<void> {
   const db = await openDatabase();
+  const normalized: AppStoredSettings = {
+    ...settings,
+    ministryIdentity: normalizeMinistryIdentity(settings.ministryIdentity),
+  };
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(STORE_SETTINGS, 'readwrite');
     const store = tx.objectStore(STORE_SETTINGS);
-    const req = store.put({key: 'app_settings', value: settings});
+    const req = store.put({key: 'app_settings', value: normalized});
     req.onsuccess = () => resolve();
     req.onerror = () => reject(req.error);
   });
@@ -118,10 +234,11 @@ export interface BackupPayload {
 }
 
 export function downloadProjectJson(project: VideoProject): void {
-  const blob = new Blob([JSON.stringify(project, null, 2)], {type: 'application/json'});
+  const normalizedProject = normalizeVideoProject(project);
+  const blob = new Blob([JSON.stringify(normalizedProject, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const safeName = project.title
+  const safeName = normalizedProject.title
     .toLowerCase()
     .replace(/[^a-z0-9]+/gi, '-')
     .replace(/(^-|-$)/g, '');
@@ -133,12 +250,17 @@ export function downloadProjectJson(project: VideoProject): void {
 
 export async function exportFullBackup(): Promise<BackupPayload> {
   const [projects, settings] = await Promise.all([getAllProjects(), getAppSettings()]);
+  const normalizedProjects = projects.map(normalizeVideoProject);
+  const normalizedSettings: AppStoredSettings = {
+    ...settings,
+    ministryIdentity: normalizeMinistryIdentity(settings.ministryIdentity),
+  };
   const payload: BackupPayload = {
     app: 'JAIRRESTAURA_EVANGELIZA',
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    settings,
-    projects,
+    settings: normalizedSettings,
+    projects: normalizedProjects,
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], {type: 'application/json'});
   const url = URL.createObjectURL(blob);
@@ -162,20 +284,26 @@ export async function restoreBackupFromFile(
     let count = 0;
     for (const proj of parsed.projects) {
       if (proj && typeof proj.id === 'string' && proj.script && Array.isArray(proj.script.scenes)) {
-        await saveProject(proj);
+        await saveProject(normalizeVideoProject(proj));
         count++;
       }
     }
     let restoredSettings = false;
     if (parsed.settings) {
-      await saveAppSettings({...DEFAULT_SETTINGS, ...parsed.settings});
+      await saveAppSettings({
+        ...DEFAULT_SETTINGS,
+        ...parsed.settings,
+        ministryIdentity: normalizeMinistryIdentity(
+          parsed.settings.ministryIdentity ?? DEFAULT_MINISTRY_IDENTITY,
+        ),
+      });
       restoredSettings = true;
     }
     return {importedProjects: count, restoredSettings};
   }
 
   if (parsed && typeof parsed.id === 'string' && parsed.script && Array.isArray(parsed.script.scenes)) {
-    await saveProject(parsed as VideoProject);
+    await saveProject(normalizeVideoProject(parsed as VideoProject));
     return {importedProjects: 1, restoredSettings: false};
   }
 
