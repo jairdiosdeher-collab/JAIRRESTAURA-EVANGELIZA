@@ -29,6 +29,7 @@ import {ProjectsVault} from './components/ProjectsVault';
 import {SermonsLibrary} from './components/SermonsLibrary';
 import {TestimonyStudio} from './components/TestimonyStudio';
 import {VideoEditor} from './components/VideoEditor';
+import {UploadedVideos} from './components/UploadedVideos';
 import {YouthStudio} from './components/YouthStudio';
 import {PREPARED_SERMONS} from './data/sermons';
 import {useOnlineStatus} from './hooks/usePWA';
@@ -217,6 +218,7 @@ export default function App() {
     {id: 'predicaciones', label: 'Predicaciones'},
     {id: 'invitaciones', label: 'Invitaciones'},
     {id: 'biblia', label: 'Biblioteca'},
+    {id: 'videos', label: 'Videos MP4'},
   ];
 
   const isAdvancedSubModule =
@@ -486,6 +488,8 @@ export default function App() {
               />
             )}
 
+            {activeSection === 'videos' && <UploadedVideos />}
+
             {activeSection === 'biblia' && (
               <BiblicalLibraryView
                 ministryIdentity={ministryIdentity}
@@ -548,7 +552,7 @@ export default function App() {
       {/* Mobile Bottom Thumb-Zone Tab Bar (<= 15% viewport height) */}
       <nav
         aria-label="Navegación móvil"
-        className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-5 items-center border-t border-stone-200 bg-[#FAF8F4]/95 px-1 pb-safe backdrop-blur-md md:hidden dark:border-slate-800 dark:bg-[#090B10]/95"
+        className="fixed inset-x-0 bottom-0 z-40 grid h-16 grid-cols-6 items-center border-t border-stone-200 bg-[#FAF8F4]/95 px-1 pb-safe backdrop-blur-md md:hidden dark:border-slate-800 dark:bg-[#090B10]/95"
       >
         {[
           {id: 'inicio' as AppSection, label: 'Inicio', icon: Home, onClick: () => navigateSection('inicio')},
@@ -556,6 +560,7 @@ export default function App() {
           {id: 'proyectos' as AppSection, label: 'Mis Videos', icon: FolderArchive, onClick: () => navigateSection('proyectos')},
           {id: 'predicaciones' as AppSection, label: 'Mensajes', icon: BookOpen, onClick: () => navigateSection('predicaciones')},
           {id: 'avanzado' as AppSection, label: 'Más', icon: Library, onClick: () => navigateSection('avanzado')},
+          {id: 'videos' as AppSection, label: 'MP4', icon: Film, onClick: () => navigateSection('videos')},
         ].map((item) => {
           const Icon = item.icon;
           const active = activeSection === item.id;
